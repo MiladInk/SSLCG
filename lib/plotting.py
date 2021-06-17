@@ -10,7 +10,7 @@ def get_grid(sde, input_channels, input_height, dist, n=4, num_steps=20, transfo
     y0 = y0 * std + mean
     ts = torch.linspace(0, 1, num_steps + 1).to(y0) * sde.T
     ones = torch.ones(num_samples, 1, 1, 1).to(y0)
-    sslr = torch.cat([torch.eye(dist.probs.shape[0])[i] for i in list(dist.sample(sample_shape=(num_samples, 1)))]) # [B, sslr_dims(now it is just 10)]
+    sslr = torch.cat([torch.eye(dist.probs.shape[0])[i] for i in list(dist.sample(sample_shape=(num_samples, 1)))]).to(y0) # [B, sslr_dims(now it is just 10)]
 
     with torch.no_grad():
         for i in range(num_steps):
