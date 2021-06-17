@@ -39,7 +39,7 @@ def get_args():
     parser.add_argument('--vtype', type=str, choices=['rademacher', 'gaussian'], default='rademacher',
                         help='random vector for the Hutchinson trace estimator')
     parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--test_batch_size', type=int, default=256)
+    parser.add_argument('--test_batch_size', type=int, default=64)
     parser.add_argument('--lr', type=float, default=0.0001,
                         help='learning rate')
     parser.add_argument('--num_iterations', type=int, default=10000)
