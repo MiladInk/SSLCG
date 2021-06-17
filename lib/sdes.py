@@ -71,8 +71,8 @@ class PluginReverseSDE(torch.nn.Module):
         self.debias = debias
 
     # Drift
-    def mu(self, t, y, lmbd=0.):
-        return (1. - 0.5 * lmbd) * self.base_sde.g(self.T-t, y) * self.a(y, self.T - t.squeeze()) - \
+    def mu(self, t, y, sslr, lmbd=0.):
+        return (1. - 0.5 * lmbd) * self.base_sde.g(self.T-t, y) * self.a(y, self.T - t.squeeze(), sslr) - \
                self.base_sde.f(self.T - t, y)
 
     # Diffusion
@@ -80,7 +80,7 @@ class PluginReverseSDE(torch.nn.Module):
         return (1. - lmbd) ** 0.5 * self.base_sde.g(self.T-t, y)
 
     @torch.enable_grad()
-    def dsm(self, x):
+    def dsm(self, x, sslr):
         """
         denoising score matching loss
         """
@@ -89,12 +89,12 @@ class PluginReverseSDE(torch.nn.Module):
         else:
             t_ = torch.rand([x.size(0), ] + [1 for _ in range(x.ndim - 1)]).to(x) * self.T
         y, target, std, g = self.base_sde.sample(t_, x, return_noise=True)
-        a = self.a(y, t_.squeeze())
+        a = self.a(y, t_.squeeze(), sslr)
 
         return ((a * std / g + target) ** 2).view(x.size(0), -1).sum(1, keepdim=False) / 2
 
     @torch.enable_grad()
-    def elbo_random_t_slice(self, x):
+    def elbo_random_t_slice(self, x, sslr):
         """
         estimating the ELBO of the plug-in reverse SDE by sampling t uniformly between [0, T], and by estimating
         div(mu) using the Hutchinson trace estimator
@@ -103,7 +103,7 @@ class PluginReverseSDE(torch.nn.Module):
         qt = 1 / self.T
         y = self.base_sde.sample(t_, x).requires_grad_()
 
-        a = self.a(y, t_.squeeze())
+        a = self.a(y, t_.squeeze(), sslr)
         mu = self.base_sde.g(t_, y) * a - self.base_sde.f(t_, y)
 
         v = sample_v(x.shape, vtype=self.vtype).to(y)

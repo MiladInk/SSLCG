@@ -4,12 +4,15 @@ import numpy as np
 import torch
 import torchvision
 import torchvision.transforms as transforms
+
+from dataset.cifar import SSLCIFAR10
 from lib.sdes import VariancePreservingSDE, PluginReverseSDE
 from lib.plotting import get_grid
 from lib.flows.elemwise import LogitTransform
 from lib.models.unet import UNet
 from lib.helpers import logging, create
 from tensorboardX import SummaryWriter
+from torch.distributions.categorical import Categorical
 import json
 
 
@@ -20,7 +23,7 @@ def get_args():
     parser = argparse.ArgumentParser()
 
     # i/o
-    parser.add_argument('--dataset', type=str, choices=['mnist', 'cifar'], default='mnist')
+    parser.add_argument('--dataset', type=str, choices=['cifar10'], default='cifar10')
     parser.add_argument('--dataroot', type=str, default='~/.datasets')
     parser.add_argument('--saveroot', type=str, default='~/.saved')
     parser.add_argument('--expname', type=str, default='default')
@@ -62,44 +65,12 @@ with open(os.path.join(folder_path, 'args.txt'), 'w') as out:
     out.write(json.dumps(args.__dict__, indent=4))
 writer = SummaryWriter(folder_path)
 
-
-if args.dataset == 'mnist':
-    input_channels = 1
-    input_height = 28
-    dimx = input_channels * input_height ** 2
-
-    transform = transforms.Compose([transforms.ToTensor()])
-    trainset = torchvision.datasets.MNIST(root=args.dataroot, train=True,
-                                          download=True, transform=transform)
-    testset = torchvision.datasets.MNIST(root=args.dataroot, train=False,
-                                         download=True, transform=transform)
-
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size,
-                                              shuffle=True, num_workers=2)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=args.test_batch_size,
-                                             shuffle=True, num_workers=2)
-
-    drift_q = UNet(
-        input_channels=input_channels,
-        input_height=input_height,
-        ch=32,
-        ch_mult=(1, 2, 2),
-        num_res_blocks=2,
-        attn_resolutions=(16,),
-        resamp_with_conv=True,
-    )
-
-elif args.dataset == 'cifar':
+if args.dataset == 'cifar10':
     input_channels = 3
     input_height = 32
     dimx = input_channels * input_height ** 2
-
-    transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor()])
-    trainset = torchvision.datasets.CIFAR10(root=os.path.join(args.dataroot, 'cifar10'), train=True,
-                                            download=True, transform=transform)
-    testset = torchvision.datasets.CIFAR10(root=os.path.join(args.dataroot, 'cifar10'), train=False,
-                                           download=True, transform=transform)
-
+    trainset = SSLCIFAR10(train=True)
+    testset = SSLCIFAR10(train=False)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size,
                                               shuffle=True, num_workers=2)
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.test_batch_size,
@@ -114,6 +85,8 @@ elif args.dataset == 'cifar':
         attn_resolutions=(16,),
         resamp_with_conv=True,
     )
+
+    dist = Categorical(probs=sum(trainset[i][1] for i in range(len(trainset)))/len(trainset))
 else:
     raise NotImplementedError
 
@@ -141,16 +114,18 @@ else:
 def evaluate():
     test_bpd = list()
     gen_sde.eval()
-    for x_test, _ in testloader:
+    for x_test, sslr_test in testloader:
         if cuda:
             x_test = x_test.cuda()
+            sslr_test = sslr_test.cuda()
+
         x_test = x_test * 255 / 256 + torch.rand_like(x_test) / 256
         if args.real:
             x_test, ldj = logit.forward_transform(x_test, 0)
-            elbo_test = gen_sde.elbo_random_t_slice(x_test)
-            elbo_test += ldj
+            elbo_test = gen_sde.elbo_random_t_slice(x_test, sslr_test).cpu()
+            elbo_test += ldj.cpu()
         else:
-            elbo_test = gen_sde.elbo_random_t_slice(x_test)
+            elbo_test = gen_sde.elbo_random_t_slice(x_test, sslr_test).cpu()
 
         test_bpd.extend(- (elbo_test.data.cpu().numpy() / dimx) / np.log(2) + 8)
     gen_sde.train()
@@ -165,18 +140,20 @@ else:
     count = 0
     writer.add_scalar('T', gen_sde.T.item(), count)
     writer.add_image('samples',
-                     get_grid(gen_sde, input_channels, input_height, n=4,
+                     get_grid(gen_sde, input_channels, input_height, dist, n=4,
                               num_steps=args.num_steps, transform=reverse),
                      0)
 while not_finished:
-    for x, _ in trainloader:
+    for x, sslr in trainloader:
         if cuda:
             x = x.cuda()
+            sslr = sslr.cuda()
+
         x = x * 255 / 256 + torch.rand_like(x) / 256
         if args.real:
             x, _ = logit.forward_transform(x, 0)
 
-        loss = gen_sde.dsm(x).mean()
+        loss = gen_sde.dsm(x, sslr).mean()
 
         optim.zero_grad()
         loss.backward()
@@ -200,7 +177,7 @@ while not_finished:
         if count % args.sample_every == 0:
             gen_sde.eval()
             writer.add_image('samples',
-                             get_grid(gen_sde, input_channels, input_height, n=4,
+                             get_grid(gen_sde, input_channels, input_height, dist, n=4,
                                       num_steps=args.num_steps, transform=reverse),
                              count)
             gen_sde.train()

@@ -235,6 +235,24 @@ class TimestepEmbedding(nn.Module):
         temb = self.main(temb)
         return temb
 
+class SSLREmbedding(nn.Module):
+    def __init__(self, embedding_dim, hidden_dim, output_dim, act):
+        super().__init__()
+
+        self.embedding_dim = embedding_dim
+        self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
+
+        self.main = nn.Sequential(
+            dense(embedding_dim, hidden_dim),
+            act,
+            dense(hidden_dim, output_dim),
+        )
+
+    def forward(self, r):
+        remb = self.main(r)
+        return remb
+
 
 class UNet(nn.Module):
     def __init__(self,
@@ -276,6 +294,19 @@ class UNet(nn.Module):
             hidden_dim=temb_ch,
             output_dim=temb_ch,
             act=act,
+        )
+
+        self.remb_net = SSLREmbedding(
+            embedding_dim=10,
+            hidden_dim=temb_ch,
+            output_dim=temb_ch,
+            act=act,
+        )
+
+        self.remb_temb_mixer = nn.Sequential(
+            dense(2*temb_ch, temb_ch),
+            act,
+            dense(temb_ch, temb_ch)
         )
 
         # Downsampling
@@ -363,12 +394,16 @@ class UNet(nn.Module):
         return x
 
     # noinspection PyArgumentList,PyShadowingNames
-    def forward(self, x, temp):
+    def forward(self, x, temp, sslr):
         # Init
         B, C, H, W = x.size()
 
-        # Timestep embedding
+        # Timestep, SSLR embedding
         temb = self.temb_net(temp)
+        assert list(temb.shape) == [B, self.ch * 4]
+        remb = self.remb_net(sslr)
+        assert list(remb.shape) == [B, self.ch * 4]
+        temb = self.remb_temb_mixer(torch.cat([remb, temb], axis=1))
         assert list(temb.shape) == [B, self.ch * 4]
 
         # Downsampling
@@ -444,6 +479,7 @@ if __name__ == '__main__':
 
     x_ = torch.randn(1, 3, 256, 256)
     t = torch.zeros(1)
-    output = model(x_, t)
+    sslr = torch.zeros(1, 10)
+    output = model(x_, t, sslr)
     print(x_.size(), output.size())
     assert x_.size() == output.size()
