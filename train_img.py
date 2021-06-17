@@ -130,7 +130,7 @@ def evaluate():
         test_bpd.extend(- (elbo_test.data.cpu().numpy() / dimx) / np.log(2) + 8)
     gen_sde.train()
     test_bpd = np.array(test_bpd)
-    return test_bpd.mean(), test_bpd.std() / len(testloader.dataset.data) ** 0.5
+    return test_bpd.mean(), test_bpd.std() / len(testloader.dataset) ** 0.5
 
 
 if os.path.exists(os.path.join(folder_path, 'checkpoint.pt')):
