@@ -42,7 +42,7 @@ def get_args():
     parser.add_argument('--test_batch_size', type=int, default=64)
     parser.add_argument('--lr', type=float, default=0.0001,
                         help='learning rate')
-    parser.add_argument('--num_iterations', type=int, default=10000)
+    parser.add_argument('--num_iterations', type=int, default=300000)
 
     # model
     parser.add_argument('--real', type=eval, choices=[True, False], default=True,
