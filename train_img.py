@@ -5,7 +5,7 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 
-from dataset.cifar import SSLCIFAR10
+from dataset.cifar import SSLCIFAR10, Roman
 from lib.sdes import VariancePreservingSDE, PluginReverseSDE
 from lib.plotting import get_grid
 from lib.flows.elemwise import LogitTransform
@@ -23,7 +23,7 @@ def get_args():
     parser = argparse.ArgumentParser()
 
     # i/o
-    parser.add_argument('--dataset', type=str, choices=['cifar10'], default='cifar10')
+    parser.add_argument('--dataset', type=str, choices=['cifar10', 'roman'], default='cifar10')
     parser.add_argument('--dataroot', type=str, default='~/.datasets')
     parser.add_argument('--saveroot', type=str, default='~/.saved')
     parser.add_argument('--expname', type=str, default='default')
@@ -71,6 +71,27 @@ if args.dataset == 'cifar10':
     dimx = input_channels * input_height ** 2
     trainset = SSLCIFAR10(train=True)
     testset = SSLCIFAR10(train=False)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size,
+                                              shuffle=True, num_workers=2)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=args.test_batch_size,
+                                             shuffle=True, num_workers=2)
+
+    drift_q = UNet(
+        input_channels=input_channels,
+        input_height=input_height,
+        ch=128,
+        ch_mult=(1, 2, 2, 2),
+        num_res_blocks=2,
+        attn_resolutions=(16,),
+        resamp_with_conv=True,
+    )
+
+elif args.dataset == 'roman':
+    input_channels = 3
+    input_height = 32
+    dimx = input_channels * input_height ** 2
+    trainset = Roman()
+    testset = Roman()
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size,
                                               shuffle=True, num_workers=2)
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.test_batch_size,
