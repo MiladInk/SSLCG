@@ -5,7 +5,8 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 
-from dataset.cifar import SSLCIFAR10, Roman
+from dataset.cifar import SSLCIFAR10
+from dataset.roman import Roman
 from lib.sdes import VariancePreservingSDE, PluginReverseSDE
 from lib.plotting import get_grid
 from lib.flows.elemwise import LogitTransform
