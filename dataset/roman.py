@@ -7,9 +7,11 @@ import torch
 class Roman(Dataset):
   def __init__(self):
       import torchvision
+      import os
+      tmpdir = os.environ['SLURM_TMPDIR']
       transform = torchvision.transforms.Compose(
           [torchvision.transforms.Resize((32, 32)), torchvision.transforms.ToTensor()])
-      self.romandataset = torchvision.datasets.ImageFolder(root="./roman_rana/all", transform=transform)
+      self.romandataset = torchvision.datasets.ImageFolder(root=tmpdir + "/roman_rana/all", transform=transform)
 
   def __getitem__(self, idx):
     img, label = self.romandataset[idx]
