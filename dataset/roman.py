@@ -17,3 +17,6 @@ class Roman(Dataset):
     img, label = self.romandataset[idx]
     onehot_label = torch.eye(10)[label]
     return img, onehot_label
+
+  def __len__(self):
+      return len(self.romandataset)
